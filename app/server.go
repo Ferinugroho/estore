@@ -4,6 +4,11 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+
+	"gorm.io/driver/postgres"
+
+	"github.com/joho/godotenv"
 
 	"github.com/gorilla/mux"
 	"gorm.io/gorm"
@@ -20,26 +25,61 @@ type AppConfig struct {
 	AppPort string
 }
 
-func (server *Server) Initialize(appCofig AppConfig) {
+type DBConfig struct {
+	DBHost     string
+	DBUser     string
+	DBPassword string
+	DBName     string
+	DBPort     string
+}
+
+func (server *Server) Initialize(appCofig AppConfig, dbConfig DBConfig) {
 	fmt.Println("Welcome to " + appCofig.AppName)
+
+	var err error
+	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=disable TimeZone=Asia/Jakarta", dbConfig.DBHost, dbConfig.DBUser, dbConfig.DBPassword, dbConfig.DBName, dbConfig.DBPort)
+	server.DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
+
+	if err != nil {
+		panic("Failed on connection to the database server")
+	}
 
 	server.Router = mux.NewRouter()
 	server.InitializeRoutes()
 }
 
 func (server *Server) Run(addr string) {
-	fmt.Printf("Listening to port $s", addr)
+	fmt.Printf("Listening to port %s", addr)
 	log.Fatal(http.ListenAndServe(addr, server.Router))
+}
+
+func getEnv(key, fallback string) string {
+	if value, ok := os.LookupEnv(key); ok {
+		return value
+	}
+	return fallback
 }
 
 func Run() {
 	var server = Server{}
 	var appConfig = AppConfig{}
+	var dbConfig = DBConfig{}
 
-	appConfig.AppName = "eStore"
-	appConfig.AppEnv = "Development"
-	appConfig.AppPort = "9999"
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatalf("Error on loading .env file")
+	}
 
-	server.Initialize(appConfig)
+	appConfig.AppName = getEnv("APP_NAME", "eStore")
+	appConfig.AppEnv = getEnv("APP_ENV", "Development")
+	appConfig.AppPort = getEnv("APP_PORT", "9000")
+
+	dbConfig.DBHost = getEnv("DB_HOST", "localhost")
+	dbConfig.DBUser = getEnv("DB_USER", "user")
+	dbConfig.DBPassword = getEnv("DB_PASSWORD", "password")
+	dbConfig.DBName = getEnv("DB_NAME", "dbname")
+	dbConfig.DBPort = getEnv("DB_PORT", "5432")
+
+	server.Initialize(appConfig, dbConfig)
 	server.Run(":" + appConfig.AppPort)
 }
